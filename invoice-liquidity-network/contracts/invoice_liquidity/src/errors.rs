@@ -13,4 +13,6 @@ pub enum ContractError {
     InvalidDueDate       = 8,
     InvoiceDefaulted     = 9,
     NothingToClaim       = 10,
+    NotYetDefaulted      = 11,
+    OverfundingRejected  = 12,
 }
