@@ -1,5 +1,7 @@
 # Invoice Liquidity Network
 
+[![CI](https://github.com/Nursca/Invoice-Liquidity-Network/actions/workflows/ci.yml/badge.svg)](https://github.com/Nursca/Invoice-Liquidity-Network/actions/workflows/ci.yml)
+
 **Turn unpaid invoices into instant liquidity on-chain, on Stellar.**
 
 Invoice Liquidity Network (ILN) is an open-source, decentralized invoice factoring protocol built on [Stellar](https://stellar.org) using [Soroban](https://soroban.stellar.org) smart contracts. Freelancers, creators, and SMEs can unlock the value of their outstanding invoices immediately, while DeFi liquidity providers earn yield by funding them at a discount.
@@ -83,6 +85,41 @@ The repository now includes a typed SDK package at [sdk/README.md](/Users/mac/De
 ```bash
 npm install @invoice-liquidity/sdk
 ```
+
+## Frontend Snapshot Tests
+
+The frontend uses Vitest snapshots for key UI states so unintentional visual changes are caught during review.
+
+```bash
+cd frontend && npm test
+```
+
+To intentionally refresh committed snapshots after a UI change:
+
+cd frontend && npm test -- --update-snapshots
+```
+
+## End-to-End Testing (E2E)
+
+Integration tests validate the smart contract behaviors against a local live Stellar network to ensure perfect balance assertions and lifecycle determinism.
+
+**Prerequisites:**
+You must have [Docker](https://docs.docker.com/get-docker/) installed.
+
+**Running tests locally:**
+1. Start the local Stellar node:
+   ```bash
+   docker-compose up -d
+   ```
+2. Run the suite:
+   ```bash
+   npm run test:e2e
+   ```
+*If Docker is unavailable, the tests will detect unreachable nodes and gracefully skip instead of failing.*
+
+**Continuous Integration (CI):**
+E2E testing is fully integrated into GitHub Actions, but skipped by default to save CI minutes. To force CI to run the `e2e-tests` job, set the environment variable:
+`RUN_E2E=true`
 
 ---
 
