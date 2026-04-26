@@ -184,6 +184,7 @@ impl InvoiceLiquidityContract {
     // ------------------------------------------------------------
     pub fn update_invoice(
         env: Env,
+        freelancer: Address,
         invoice_id: u64,
         amount: i128,
         due_date: u64,
@@ -194,7 +195,11 @@ impl InvoiceLiquidityContract {
         }
 
         let mut invoice = load_invoice(&env, invoice_id);
-        invoice.freelancer.require_auth();
+        freelancer.require_auth();
+
+        if invoice.freelancer != freelancer {
+            return Err(ContractError::Unauthorized);
+        }
 
         if invoice.status == InvoiceStatus::Pending && env.ledger().timestamp() >= invoice.due_date
         {

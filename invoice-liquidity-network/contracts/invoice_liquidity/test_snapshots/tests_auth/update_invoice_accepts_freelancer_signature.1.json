@@ -137,6 +137,9 @@
               "function_name": "update_invoice",
               "args": [
                 {
+                  "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M"
+                },
+                {
                   "u64": "1"
                 },
                 {

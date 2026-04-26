@@ -129,8 +129,17 @@ fn fund_invoice_args(t: &AuthTestEnv, invoice_id: u64) -> soroban_sdk::Vec<Val> 
 }
 
 fn update_invoice_args(t: &AuthTestEnv, invoice_id: u64) -> soroban_sdk::Vec<Val> {
+    update_invoice_args_for_signer(t, invoice_id, &t.freelancer)
+}
+
+fn update_invoice_args_for_signer(
+    t: &AuthTestEnv,
+    invoice_id: u64,
+    signer: &Address,
+) -> soroban_sdk::Vec<Val> {
     vec![
         &t.env,
+        signer.clone().into_val(&t.env),
         invoice_id.into_val(&t.env),
         INVOICE_AMOUNT.into_val(&t.env),
         (due_date(t) + 1).into_val(&t.env),
@@ -250,7 +259,14 @@ fn set_update_invoice_auth(t: &AuthTestEnv, signer: &Address, invoice_id: u64) {
         invoke: &MockAuthInvoke {
             contract: &t.contract_id,
             fn_name: "update_invoice",
-            args: (invoice_id, INVOICE_AMOUNT, due_date(t) + 1, DISCOUNT_RATE).into_val(&t.env),
+            args: (
+                signer.clone(),
+                invoice_id,
+                INVOICE_AMOUNT,
+                due_date(t) + 1,
+                DISCOUNT_RATE,
+            )
+                .into_val(&t.env),
             sub_invokes: &[],
         },
     }]);
@@ -366,9 +382,14 @@ fn update_invoice_rejects_wrong_signer() {
     let impostor = Address::generate(&t.env);
 
     set_update_invoice_auth(&t, &impostor, invoice_id);
-    let result = invoke_update_invoice(&t, invoice_id);
+    let result = t.env.try_invoke_contract::<Result<(), ContractError>, Error>(
+        &t.contract_id,
+        &Symbol::new(&t.env, "update_invoice"),
+        update_invoice_args_for_signer(&t, invoice_id, &impostor),
+    );
+    let expected_error: Error = ContractError::Unauthorized.into();
 
-    assert_eq!(result, Err(Ok(auth_error())));
+    assert_eq!(result, Err(Ok(expected_error)));
 }
 
 #[test]
