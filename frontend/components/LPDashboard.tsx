@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useEffect, useCallback, useMemo } from "react";
+import { useRouter } from "next/navigation";
 import { useWallet } from "../context/WalletContext";
 import { useToast } from "../context/ToastContext";
 import TokenSelector, { TokenAmount } from "./TokenSelector";
@@ -34,6 +35,7 @@ type FundingStep = "approve" | "fund";
 
 
 export default function LPDashboard() {
+  const router = useRouter();
   const { address, connect, signTx } = useWallet();
   const { addToast, updateToast } = useToast();
   const { tokens, tokenMap, defaultToken } = useApprovedTokens();
@@ -291,6 +293,32 @@ export default function LPDashboard() {
     } else {
       setSortKey(key);
       setSortOrder("desc");
+    }
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLTableRowElement>, invoice: any, index: number) => {
+    const rowElements = Array.from(e.currentTarget.parentElement?.querySelectorAll('tr[role="row"]') || []);
+
+    switch (e.key) {
+      case "ArrowDown":
+        e.preventDefault();
+        (rowElements[index + 1] as HTMLElement)?.focus();
+        break;
+      case "ArrowUp":
+        e.preventDefault();
+        (rowElements[index - 1] as HTMLElement)?.focus();
+        break;
+      case "Enter":
+        e.preventDefault();
+        router.push(`/i/${invoice.id.toString()}`);
+        break;
+      case "f":
+      case "F":
+        if (activeTab === "discovery" || (activeTab === "watchlist" && invoice.status === "Pending")) {
+          e.preventDefault();
+          handleFund(invoice);
+        }
+        break;
     }
   };
 
