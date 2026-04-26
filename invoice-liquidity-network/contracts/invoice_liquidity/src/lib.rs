@@ -1,15 +1,19 @@
 #![no_std]
 
 mod errors;
+mod events;
 mod invoice;
 mod tests_regression;
 
 use soroban_sdk::{
-    contract, contractimpl, symbol_short, vec, Address, Env, IntoVal, Symbol,
-    token::Client as TokenClient, Vec,
+    contract, contractimpl, token::Client as TokenClient, vec, Address, Env, IntoVal, Symbol, Vec,
 };
 
 use errors::ContractError;
+use events::{
+    InvoiceCancelled, InvoiceDefaulted, InvoiceFunded, InvoicePaid, InvoiceSubmitted,
+    InvoiceTransferred,
+};
 use invoice::{
     get_invoice_funders, get_payer_score, invoice_exists, load_invoice, next_invoice_id,
     save_invoice, save_invoice_funders, set_payer_score, Invoice, InvoiceParams, InvoiceStatus,
@@ -177,8 +181,16 @@ impl InvoiceLiquidityContract {
 
         save_invoice(&env, &invoice);
 
-        #[allow(deprecated)]
-        env.events().publish((symbol_short!("submitted"),), id);
+        env.events().publish_event(&InvoiceSubmitted {
+            invoice_id: invoice.id,
+            freelancer: invoice.freelancer.clone(),
+            payer: invoice.payer.clone(),
+            token: invoice.token.clone(),
+            amount: invoice.amount,
+            due_date: invoice.due_date,
+            discount_rate: invoice.discount_rate,
+            status: invoice.status.clone(),
+        });
 
         Ok(id)
     }
@@ -242,8 +254,16 @@ impl InvoiceLiquidityContract {
 
             save_invoice(&env, &invoice);
 
-            #[allow(deprecated)]
-            env.events().publish((symbol_short!("submitted"),), id);
+            env.events().publish_event(&InvoiceSubmitted {
+                invoice_id: invoice.id,
+                freelancer: invoice.freelancer.clone(),
+                payer: invoice.payer.clone(),
+                token: invoice.token.clone(),
+                amount: invoice.amount,
+                due_date: invoice.due_date,
+                discount_rate: invoice.discount_rate,
+                status: invoice.status.clone(),
+            });
 
             ids.push_back(id);
         }
@@ -326,9 +346,20 @@ impl InvoiceLiquidityContract {
 
         notify_distribution_funding(&env, &funder, fund_amount);
 
-        #[allow(deprecated)]
-        env.events()
-            .publish((symbol_short!("funded"),), (invoice_id, funder));
+        env.events().publish_event(&InvoiceFunded {
+            invoice_id: invoice.id,
+            funder: funder.clone(),
+            freelancer: invoice.freelancer.clone(),
+            payer: invoice.payer.clone(),
+            token: invoice.token.clone(),
+            fund_amount,
+            amount_funded: invoice.amount_funded,
+            invoice_amount: invoice.amount,
+            due_date: invoice.due_date,
+            discount_rate: invoice.discount_rate,
+            funded_at: invoice.funded_at,
+            status: invoice.status.clone(),
+        });
 
         Ok(())
     }
@@ -364,10 +395,12 @@ impl InvoiceLiquidityContract {
 
         save_invoice(&env, &invoice);
 
-        env.events().publish(
-            (soroban_sdk::Symbol::new(&env, "transferred"),),
-            (invoice_id, old_freelancer, new_freelancer),
-        );
+        env.events().publish_event(&InvoiceTransferred {
+            invoice_id,
+            old_freelancer,
+            new_freelancer,
+            status: invoice.status.clone(),
+        });
 
         Ok(())
     }
@@ -375,10 +408,7 @@ impl InvoiceLiquidityContract {
     // ------------------------------------------------------------
     // cancel_invoice
     // ------------------------------------------------------------
-    pub fn cancel_invoice(
-        env: Env,
-        invoice_id: u64,
-    ) -> Result<(), ContractError> {
+    pub fn cancel_invoice(env: Env, invoice_id: u64) -> Result<(), ContractError> {
         if !invoice_exists(&env, invoice_id) {
             return Err(ContractError::InvoiceNotFound);
         }
@@ -401,10 +431,11 @@ impl InvoiceLiquidityContract {
 
         save_invoice(&env, &invoice);
 
-        env.events().publish(
-            (soroban_sdk::Symbol::new(&env, "cancelled"),),
-            (invoice_id,),
-        );
+        env.events().publish_event(&InvoiceCancelled {
+            invoice_id,
+            freelancer: invoice.freelancer.clone(),
+            status: invoice.status.clone(),
+        });
 
         Ok(())
     }
@@ -440,7 +471,8 @@ impl InvoiceLiquidityContract {
         token.transfer(&invoice.payer, &contract_address, &invoice.amount);
 
         // Calculate the discount amount that was kept in escrow
-        let discount_amount = invoice.amount
+        let discount_amount = invoice
+            .amount
             .checked_mul(discount_rate_as_i128(invoice.discount_rate))
             .unwrap_or(0)
             / 10_000;
@@ -448,7 +480,11 @@ impl InvoiceLiquidityContract {
         // Contract releases the full amount + the escrowed discount to the LP
         // LP receives: their escrowed discount + the payer's settlement
         // Total = invoice.amount + discount_amount
-        token.transfer(&contract_address, &funder, &(invoice.amount + discount_amount));
+        token.transfer(
+            &contract_address,
+            &funder,
+            &(invoice.amount + discount_amount),
+        );
 
         // ---- Update invoice ----
         invoice.status = InvoiceStatus::Paid;
@@ -462,9 +498,18 @@ impl InvoiceLiquidityContract {
         let current_score = get_payer_score(&env, &invoice.payer);
         set_payer_score(&env, &invoice.payer, current_score + 1);
 
-        // Emit event
-        #[allow(deprecated)]
-        env.events().publish((symbol_short!("paid"),), invoice_id);
+        env.events().publish_event(&InvoicePaid {
+            invoice_id: invoice.id,
+            payer: invoice.payer.clone(),
+            funder,
+            freelancer: invoice.freelancer.clone(),
+            token: invoice.token.clone(),
+            amount: invoice.amount,
+            discount_amount,
+            due_date: invoice.due_date,
+            paid_on_time,
+            status: invoice.status.clone(),
+        });
 
         Ok(())
     }
@@ -584,10 +629,18 @@ impl InvoiceLiquidityContract {
             set_payer_score(&env, &invoice.payer, 0);
         }
 
-        // Emit event
-        #[allow(deprecated)]
-        env.events()
-            .publish((symbol_short!("defaulted"),), invoice_id);
+        env.events().publish_event(&InvoiceDefaulted {
+            invoice_id: invoice.id,
+            funder,
+            freelancer: invoice.freelancer.clone(),
+            payer: invoice.payer.clone(),
+            token: invoice.token.clone(),
+            amount: invoice.amount,
+            due_date: invoice.due_date,
+            defaulted_at: now,
+            discount_amount,
+            status: invoice.status.clone(),
+        });
 
         Ok(())
     }
@@ -664,7 +717,7 @@ fn notify_distribution_funding(env: &Env, lp: &Address, amount_usdc_equivalent: 
     let args = vec![
         env,
         lp.clone().into_val(env),
-        amount_usdc_equivalent.into_val(env)
+        amount_usdc_equivalent.into_val(env),
     ];
     env.invoke_contract::<()>(&dist_contract, &Symbol::new(env, "accrue_lp"), args);
 }
@@ -687,7 +740,7 @@ fn notify_distribution_settlement(
         env,
         freelancer.clone().into_val(env),
         payer.clone().into_val(env),
-        settled_on_time.into_val(env)
+        settled_on_time.into_val(env),
     ];
     env.invoke_contract::<()>(&dist_contract, &Symbol::new(env, "accrue_settlement"), args);
 }
@@ -698,10 +751,10 @@ fn notify_distribution_settlement(
 
 mod test;
 mod tests_arithmetic;
-mod tests_state_machine;
-mod tests_security;
-mod tests_protocol_fee;
-mod tests_distribution;
-mod tests_storage;
 mod tests_auth;
+mod tests_distribution;
 mod tests_mutation;
+mod tests_protocol_fee;
+mod tests_security;
+mod tests_state_machine;
+mod tests_storage;

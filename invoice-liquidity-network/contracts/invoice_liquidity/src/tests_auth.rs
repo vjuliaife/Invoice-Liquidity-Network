@@ -1,18 +1,19 @@
 #![cfg(test)]
 
 use super::*;
+use soroban_sdk::xdr::{ScErrorCode, ScErrorType};
 use soroban_sdk::{
     testutils::{Address as _, Ledger, MockAuth, MockAuthInvoke},
     token::StellarAssetClient,
     vec, Address, Env, Error, IntoVal, InvokeError, Symbol, TryFromVal, Val,
 };
-use soroban_sdk::xdr::{ScErrorCode, ScErrorType};
 
 const INVOICE_AMOUNT: i128 = 1_000_000_000;
 const DISCOUNT_RATE: u32 = 300;
 const DUE_DATE_OFFSET: u64 = 60 * 60 * 24 * 30;
 
-type HostResult<T> = Result<Result<T, <T as TryFromVal<Env, Val>>::Error>, Result<Error, InvokeError>>;
+type HostResult<T> =
+    Result<Result<T, <T as TryFromVal<Env, Val>>::Error>, Result<Error, InvokeError>>;
 
 struct AuthTestEnv {
     env: Env,
@@ -46,8 +47,20 @@ fn setup() -> AuthTestEnv {
     let payer = Address::generate(&env);
     let funder = Address::generate(&env);
 
-    mint_with_auth(&env, &token_address, &token_admin_client, &token_admin, &payer);
-    mint_with_auth(&env, &token_address, &token_admin_client, &token_admin, &funder);
+    mint_with_auth(
+        &env,
+        &token_address,
+        &token_admin_client,
+        &token_admin,
+        &payer,
+    );
+    mint_with_auth(
+        &env,
+        &token_address,
+        &token_admin_client,
+        &token_admin,
+        &funder,
+    );
 
     let contract_id = env.register(InvoiceLiquidityContract, ());
     let client = InvoiceLiquidityContractClient::new(&env, &contract_id);
@@ -183,16 +196,16 @@ fn set_submit_invoice_auth(t: &AuthTestEnv, signer: &Address) {
     }]);
 }
 
-fn set_fund_invoice_auth(t: &AuthTestEnv, signer: &Address, invoice_id: u64, include_transfer: bool) {
+fn set_fund_invoice_auth(
+    t: &AuthTestEnv,
+    signer: &Address,
+    invoice_id: u64,
+    include_transfer: bool,
+) {
     let transfer_sub_invokes = [MockAuthInvoke {
         contract: &t.token_address,
         fn_name: "transfer",
-        args: (
-            t.funder.clone(),
-            t.contract_id.clone(),
-            INVOICE_AMOUNT,
-        )
-            .into_val(&t.env),
+        args: (t.funder.clone(), t.contract_id.clone(), INVOICE_AMOUNT).into_val(&t.env),
         sub_invokes: &[],
     }];
 
@@ -217,12 +230,7 @@ fn set_mark_paid_auth(t: &AuthTestEnv, signer: &Address, invoice_id: u64, includ
     let transfer_sub_invokes = [MockAuthInvoke {
         contract: &t.token_address,
         fn_name: "transfer",
-        args: (
-            t.payer.clone(),
-            t.contract_id.clone(),
-            INVOICE_AMOUNT,
-        )
-            .into_val(&t.env),
+        args: (t.payer.clone(), t.contract_id.clone(), INVOICE_AMOUNT).into_val(&t.env),
         sub_invokes: &[],
     }];
 

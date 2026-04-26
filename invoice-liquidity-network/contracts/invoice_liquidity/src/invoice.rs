@@ -46,7 +46,6 @@ pub struct InvoiceParams {
     pub token: Address,
 }
 
-
 #[contracttype]
 #[derive(Clone, Debug, Default)]
 pub struct PayerStats {
@@ -81,9 +80,7 @@ pub enum StorageKey {
 
 pub fn save_invoice(env: &Env, invoice: &Invoice) {
     let key = StorageKey::Invoice(invoice.id);
-    env.storage()
-        .persistent()
-        .set(&key, invoice);
+    env.storage().persistent().set(&key, invoice);
     env.storage()
         .persistent()
         .extend_ttl(&key, 1_000_000, 2_000_000);
