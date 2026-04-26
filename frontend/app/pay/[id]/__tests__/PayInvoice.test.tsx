@@ -50,7 +50,7 @@ describe('PayInvoicePage', () => {
     render(<PayInvoicePage params={{ id: '1' }} />);
 
     await waitFor(() => {
-      expect(screen.getByText(/100.00 USDC/)).toBeInTheDocument();
+      expect(screen.getByText(/100\s+USDC/)).toBeInTheDocument();
       expect(screen.getByText('Connect Wallet and Pay')).toBeInTheDocument();
     });
   });

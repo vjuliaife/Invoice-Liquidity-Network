@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import Navbar from "../../components/Navbar";
@@ -9,9 +9,10 @@ import ActivityFeed from "../../components/ActivityFeed";
 import ShareButton from "../../components/ShareButton";
 import InvoiceQRModal from "../../components/InvoiceQRModal";
 import { useWallet } from "../../context/WalletContext";
-import { getInvoice, type Invoice } from "../../utils/soroban";
 import { formatAddress, formatDate, formatUSDC } from "../../utils/format";
-import { TESTNET_USDC_TOKEN_ID } from "../../constants";
+import { useInvoice } from "../../hooks/useInvoices";
+import InvoiceStatusBadge from "../../components/InvoiceStatusBadge";
+import LastUpdated from "../../components/LastUpdated";
 
 interface InvoiceDetailPageProps {
   id: string;
@@ -20,28 +21,18 @@ interface InvoiceDetailPageProps {
 export default function InvoiceDetailPage({ id }: InvoiceDetailPageProps) {
   const router = useRouter();
   const { address } = useWallet();
-  const [invoice, setInvoice] = useState<Invoice | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [showQR, setShowQR] = useState(false);
-
-  const fetchInvoice = useCallback(async () => {
+  const invoiceId = useMemo(() => {
     try {
-      setLoading(true);
-      const data = await getInvoice(BigInt(id));
-      setInvoice(data);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to load invoice");
-    } finally {
-      setLoading(false);
+      return BigInt(id);
+    } catch {
+      return null;
     }
   }, [id]);
 
-  useEffect(() => {
-    fetchInvoice();
-  }, [fetchInvoice]);
+  const { data: invoice, isLoading: loading, error, dataUpdatedAt } = useInvoice(invoiceId);
+  const [showQR, setShowQR] = useState(false);
 
-  if (loading) {
+  if (loading && !invoice) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-surface-container-lowest">
         <div className="h-12 w-12 animate-spin rounded-full border-4 border-primary border-t-transparent"></div>
@@ -54,7 +45,7 @@ export default function InvoiceDetailPage({ id }: InvoiceDetailPageProps) {
       <div className="flex min-h-screen items-center justify-center bg-surface-container-lowest px-4">
         <div className="max-w-md text-center">
           <h1 className="text-3xl font-headline text-on-surface">Invoice not found</h1>
-          <p className="mt-4 text-on-surface-variant">{error || "The requested invoice could not be located."}</p>
+          <p className="mt-4 text-on-surface-variant">The requested invoice could not be located or an error occurred.</p>
           <Link href="/dashboard" className="mt-8 inline-block text-primary font-bold hover:underline">
             Go to Dashboard
           </Link>
@@ -75,15 +66,10 @@ export default function InvoiceDetailPage({ id }: InvoiceDetailPageProps) {
             <div>
               <div className="flex items-center gap-3 mb-2">
                 <span className="text-xs font-bold uppercase tracking-[0.28em] text-primary">Invoice Detail</span>
-                <span className={`rounded-full px-3 py-1 text-[10px] font-bold uppercase tracking-widest ${
-                  invoice.status === 'Paid' ? 'bg-emerald-100 text-emerald-700' :
-                  invoice.status === 'Defaulted' ? 'bg-red-100 text-red-700' :
-                  'bg-primary-container text-on-primary-container'
-                }`}>
-                  {invoice.status}
-                </span>
+                <InvoiceStatusBadge status={invoice.status} />
               </div>
               <h1 className="text-4xl md:text-5xl font-headline">Invoice #{invoice.id.toString()}</h1>
+              <LastUpdated updatedAt={dataUpdatedAt} />
             </div>
 
             <div className="flex flex-wrap gap-3">
@@ -97,7 +83,7 @@ export default function InvoiceDetailPage({ id }: InvoiceDetailPageProps) {
                         payer: invoice.payer,
                         amount: (Number(invoice.amount) / 10_000_000).toString(),
                         discount: (invoice.discount_rate / 100).toString(),
-                        token: invoice.tokenId || "",
+                        token: invoice.token || "",
                       }
                     }}
                     className="inline-flex items-center gap-2 rounded-2xl bg-primary px-6 py-3.5 text-sm font-bold text-surface-container-lowest shadow-lg hover:bg-primary/90 transition-all active:scale-[0.98]"
