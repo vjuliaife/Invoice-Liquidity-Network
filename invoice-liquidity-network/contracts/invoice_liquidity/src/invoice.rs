@@ -14,8 +14,6 @@ pub enum InvoiceStatus {
     Defaulted,       // past due_date and still unpaid
     Expired,         // past due_date with no funding
     Cancelled,       // freelancer cancelled the invoice before funding
-    // Event for cancelled
-    InvoiceCancelled,
 }
 
 // ----------------------------------------------------------------
