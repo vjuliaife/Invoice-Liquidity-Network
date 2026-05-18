@@ -49,11 +49,13 @@ Freelancer                  ILN Contract              Liquidity Provider
 
 ---
 
-## Testnet Deployment
+## Stellar Testnet Deployment
 
-| Network | Contract ID |
+| Contract | Contract ID |
 |---------|-------------|
-| Stellar Testnet | `CD3TE3IAHM737P236XZL2OYU275ZKD6MN7YH7PYYAXYIGEH55OPEWYJC` |
+| ILN-Distribution | `CAQGPMT3EQK4AABMIR66JJXEOCNCLPTDNXMS5OHZXH4LI24UYAF25V5B` |
+| Invoice-Liquidity | `CCPASLHKRFBMVV5PZG3LKDGKFEDXZMB5U7DK42CVLUVWCMUCSRPVBIMO` |
+| ILN-Governance | `CD7GOIU3GNK7EZHG7XWBC7VI4NRVGMRCU7X2FOCAPQN6EGTSW46BY4EB` |
 
 > Mainnet deployment coming after audit. Do not use with real funds until then.
 
