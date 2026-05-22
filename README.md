@@ -65,7 +65,7 @@ Freelancer                  ILN Contract              Liquidity Provider
 
 This is the **organisation root** — it contains shared infrastructure used across all ILN sub-projects:
 
-### 📦 SDK (`sdk/`)
+### SDK (`sdk/`)
 A typed JavaScript/TypeScript SDK with browser Freighter signing and Node.js keypair support.
 
 ```bash
@@ -74,7 +74,7 @@ npm install @invoice-liquidity/sdk
 
 See [`sdk/README.md`](./sdk/README.md) for full API documentation.
 
-### 🔧 CLI (`cli/`)
+### CLI (`cli/`)
 A command-line tool for interacting with the ILN contract on testnet and mainnet.
 
 ```bash
@@ -90,15 +90,15 @@ iln status --id 1
 
 See [`cli/README.md`](./cli/README.md) for setup and usage.
 
-### 📡 Indexer (`indexer/`)
+### Indexer (`indexer/`)
 A Node.js service that indexes contract events and exposes a REST API for the frontend.
 
-### 🔔 Notifications (`notifications/`)
+### Notifications (`notifications/`)
 A webhook-based notification service for invoice lifecycle events.
 
 See [`docs/notifications.md`](./docs/notifications.md) for setup.
 
-### 📜 Scripts (`scripts/`)
+### Scripts (`scripts/`)
 Deployment and development helper scripts.
 
 | Script | Purpose |
