@@ -185,6 +185,7 @@ npm run test:e2e              # Run E2E integration tests
 | [`docs/multi-token.md`](./docs/multi-token.md) | Multi-token support |
 | [`docs/notifications.md`](./docs/notifications.md) | Notification system |
 | [`docs/local-development.md`](./docs/local-development.md) | Local dev setup |
+| [`docs/tutorials/first-invoice.md`](./docs/tutorials/first-invoice.md) | Hands-on invoice submission tutorial |
 | [`docs/ci-cd.md`](./docs/ci-cd.md) | CI/CD and deployment environments |
 | [`CONTRIBUTING.md`](./CONTRIBUTING.md) | How to contribute |
 | [`SECURITY.md`](./SECURITY.md) | Security policy |
