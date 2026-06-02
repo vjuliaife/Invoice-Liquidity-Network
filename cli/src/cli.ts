@@ -17,6 +17,8 @@ import {
 import { registerInspectCommand } from "./inspect";
 import { createKeypairFileSigner } from "./signer";
 import { TestnetAccountSeeder } from "./dev-seed";
+import { runFaucet } from "./faucet";
+import { scaffoldConfig } from "./config";
 import type { ResolvedConfig, RpcServerLike } from "./types";
 
 export interface CliDependencies {
