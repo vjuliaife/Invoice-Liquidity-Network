@@ -74,6 +74,20 @@ export interface ILNSdkConfig {
   networkPassphrase: string;
   signer?: TransactionSigner;
   server?: RpcServerLike;
+  /**
+   * Fallback timeout for SDK network requests in milliseconds.
+   * Defaults to 30_000 when an operation-specific timeout is not configured.
+   */
+  timeoutMs?: number;
+  /**
+   * Operation-specific request timeouts in milliseconds.
+   * Defaults: readMs 10_000, writeMs 30_000, simulationMs 15_000.
+   */
+  timeouts?: {
+    readMs?: number;
+    writeMs?: number;
+    simulationMs?: number;
+  };
 }
 
 export interface NetworkConfig {

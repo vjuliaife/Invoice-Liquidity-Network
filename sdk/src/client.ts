@@ -24,6 +24,12 @@ import type {
 } from "./types";
 
 import { parseContractError } from "./errors";
+import {
+  resolveRequestTimeouts,
+  TimeoutError,
+  withTimeout,
+  type RequestTimeouts,
+} from "./timeouts";
 
 const READ_ACCOUNT = "GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWHF";
 const POLL_ATTEMPTS = 20;
@@ -43,6 +49,7 @@ export class ILNSdk {
   private readonly networkPassphrase: string;
   private readonly server: RpcServerLike;
   private readonly signer?: TransactionSigner;
+  private readonly requestTimeouts: RequestTimeouts;
   private protocolConfigCache: { expiresAt: number; value: ProtocolConfig } | null = null;
 
   constructor(config: ILNSdkConfig) {
@@ -50,6 +57,7 @@ export class ILNSdk {
     this.networkPassphrase = config.networkPassphrase;
     this.server = config.server ?? new rpc.Server(config.rpcUrl);
     this.signer = config.signer;
+    this.requestTimeouts = resolveRequestTimeouts(config);
   }
 
   async submitInvoice(params: SubmitInvoiceParams): Promise<bigint> {
@@ -67,7 +75,7 @@ export class ILNSdk {
       nativeToScVal(params.discountRate, { type: "u32" }),
     ]);
 
-    const simulation = await this.server.simulateTransaction(transaction);
+    const simulation = await this.simulateWriteTransaction("submit_invoice", transaction);
     const invoiceId = this.extractBigIntResult(simulation, "submit_invoice");
     const preparedTransaction = await this.prepareTransaction(transaction);
 
@@ -121,7 +129,7 @@ export class ILNSdk {
     const transaction = this.buildReadTransaction("get_invoice", [
       nativeToScVal(invoiceId, { type: "u64" }),
     ]);
-    const simulation = await this.server.simulateTransaction(transaction);
+    const simulation = await this.simulateReadTransaction("get_invoice", transaction);
 
     return this.extractInvoiceResult(simulation);
   }
@@ -131,7 +139,7 @@ export class ILNSdk {
     const transaction = this.buildReadTransaction("get_reputation", [
       this.toAddress(address),
     ]);
-    const simulation = await this.server.simulateTransaction(transaction);
+    const simulation = await this.simulateReadTransaction("get_reputation", transaction);
     const result = this.extractSimulationRetval(simulation, "get_reputation");
     const native = scValToNative(result) as unknown;
     if (typeof native === "number") return native;
@@ -142,7 +150,7 @@ export class ILNSdk {
   /** Fetch contract-wide statistics */
   async getStats(): Promise<unknown> {
     const transaction = this.buildReadTransaction("get_stats", []);
-    const simulation = await this.server.simulateTransaction(transaction);
+    const simulation = await this.simulateReadTransaction("get_stats", transaction);
     const result = this.extractSimulationRetval(simulation, "get_stats");
     return scValToNative(result);
   }
@@ -152,7 +160,7 @@ export class ILNSdk {
     const transaction = this.buildReadTransaction("get_proposal", [
       nativeToScVal(id, { type: "u64" }),
     ]);
-    const simulation = await this.server.simulateTransaction(transaction);
+    const simulation = await this.simulateReadTransaction("get_proposal", transaction);
     const result = this.extractSimulationRetval(simulation, "get_proposal");
     return scValToNative(result);
   }
@@ -164,7 +172,7 @@ export class ILNSdk {
     }
 
     const transaction = this.buildReadTransaction("get_protocol_config", []);
-    const simulation = await this.server.simulateTransaction(transaction);
+    const simulation = await this.simulateReadTransaction("get_protocol_config", transaction);
     const result = this.extractSimulationRetval(simulation, "get_protocol_config");
     const config = this.parseProtocolConfig(
       this.unwrapContractResult(scValToNative(result), "get_protocol_config"),
@@ -183,7 +191,7 @@ export class ILNSdk {
     const transaction = this.buildReadTransaction("get_storage", [
       nativeToScVal(key, { type: "string" }),
     ]);
-    const simulation = await this.server.simulateTransaction(transaction);
+    const simulation = await this.simulateReadTransaction("get_storage", transaction);
     const result = this.extractSimulationRetval(simulation, "get_storage");
     const native = scValToNative(result);
     return typeof native === "string" ? native : String(native);
@@ -210,7 +218,11 @@ export class ILNSdk {
     method: string,
     args: xdr.ScVal[],
   ): Promise<BuiltTransaction> {
-    const sourceAccount = (await this.server.getAccount(sourceAddress)) as Account;
+    const sourceAccount = (await withTimeout(
+      `getAccount:${method}`,
+      this.requestTimeouts.writeMs,
+      this.server.getAccount(sourceAddress),
+    )) as Account;
 
     return new TransactionBuilder(sourceAccount, {
       fee: BASE_FEE,
@@ -239,8 +251,15 @@ export class ILNSdk {
     transaction: BuiltTransaction,
   ): Promise<PreparedTransactionLike> {
     try {
-      return await this.server.prepareTransaction(transaction);
+      return await withTimeout(
+        "prepareTransaction",
+        this.requestTimeouts.writeMs,
+        this.server.prepareTransaction(transaction),
+      );
     } catch (error) {
+      if (error instanceof TimeoutError) {
+        throw error;
+      }
       throw new Error(`Failed to prepare contract transaction: ${this.toErrorMessage(error)}`);
     }
   }
@@ -262,7 +281,11 @@ export class ILNSdk {
       signedXdr,
       this.networkPassphrase,
     );
-    const response = (await this.server.sendTransaction(signedTransaction)) as {
+    const response = (await withTimeout(
+      "sendTransaction",
+      this.requestTimeouts.writeMs,
+      this.server.sendTransaction(signedTransaction),
+    )) as {
       errorResultXdr?: string;
       hash?: string;
       status?: string;
@@ -278,9 +301,13 @@ export class ILNSdk {
       );
     }
 
-    const finalStatus = (await this.server.pollTransaction(response.hash, {
-      attempts: POLL_ATTEMPTS,
-    })) as {
+    const finalStatus = (await withTimeout(
+      "pollTransaction",
+      this.requestTimeouts.writeMs,
+      this.server.pollTransaction(response.hash, {
+        attempts: POLL_ATTEMPTS,
+      }),
+    )) as {
       resultXdr?: string;
       status?: string;
     };
@@ -295,6 +322,28 @@ export class ILNSdk {
   private extractBigIntResult(simulation: unknown, method: string): bigint {
     const result = this.extractSimulationRetval(simulation, method);
     return this.toBigInt(this.unwrapContractResult(scValToNative(result), method));
+  }
+
+  private simulateReadTransaction(
+    method: string,
+    transaction: BuiltTransaction,
+  ): Promise<unknown> {
+    return withTimeout(
+      `simulateTransaction:${method}`,
+      this.requestTimeouts.readMs,
+      this.server.simulateTransaction(transaction),
+    );
+  }
+
+  private simulateWriteTransaction(
+    method: string,
+    transaction: BuiltTransaction,
+  ): Promise<unknown> {
+    return withTimeout(
+      `simulateTransaction:${method}`,
+      this.requestTimeouts.simulationMs,
+      this.server.simulateTransaction(transaction),
+    );
   }
 
   private extractInvoiceResult(simulation: unknown): Invoice {
@@ -491,5 +540,3 @@ export class ILNSdk {
     return String(error);
   }
 }
-
-
