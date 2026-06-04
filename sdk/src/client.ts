@@ -1,4 +1,4 @@
-﻿import {
+import {
   Account,
   Address,
   BASE_FEE,
@@ -21,8 +21,10 @@ import type {
   RpcServerLike,
   SubmitInvoiceParams,
   TransactionSigner,
+  CompatibilityResult,
 } from "./types";
 
+import { checkCompatibility } from "./compatibility";
 import { GenericContractError, parseContractError } from "./errors";
 import {
   resolveRequestTimeouts,
@@ -181,6 +183,16 @@ export class ILNSdk {
         `Batch simulation failed: ${error ? String(error) : "Unknown RPC error."}`,
       );
     }
+  }
+
+  async checkCompatibility(): Promise<CompatibilityResult> {
+    const invoke = async (method: string): Promise<any> => {
+      const transaction = this.buildReadTransaction(method, []);
+      const simulation = await this.server.simulateTransaction(transaction);
+      return scValToNative(this.extractSimulationRetval(simulation, method));
+    };
+
+    return checkCompatibility(invoke);
   }
 
   async submitInvoice(params: SubmitInvoiceParams): Promise<bigint> {

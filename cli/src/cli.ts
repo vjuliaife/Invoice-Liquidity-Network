@@ -22,6 +22,8 @@ import { TestnetAccountSeeder } from "./dev-seed";
 import type { Ui } from "./format";
 import type { ResolvedConfig, RpcServerLike } from "./types";
 
+import { checkCompatibility } from "@invoice-liquidity/sdk";
+
 export interface CliDependencies {
   createClient(config: ResolvedConfig): ILNClient;
   createDevEnvironment?(ui: Ui): Pick<LocalDevEnvironment, "reset" | "start" | "status" | "stop">;
@@ -151,6 +153,38 @@ export async function runCli(
       const client = createClient(load());
       const invoices = await client.listInvoicesByAddress(options.address);
       ui.info(formatInvoiceList(invoices));
+    });
+
+  // Compatibility check command
+  const compatCommand = program.command("compat").description("SDK and contract compatibility utilities");
+
+  compatCommand
+    .command("check")
+    .description("Check SDK compatibility with the deployed contract version.")
+    .action(async () => {
+      const config = load();
+      const client = createClient(config);
+      
+      ui.info("Checking contract compatibility...");
+      const result = await checkCompatibility(async (method: string) => {
+        if (method === "get_version") {
+          return client.getVersion();
+        }
+        throw new Error(`Unsupported compatibility check invoke method: ${method}`);
+      });
+
+      ui.info(`SDK Version:      ${result.sdkVersion}`);
+      ui.info(`Contract Version: ${result.contractVersion}`);
+      
+      if (result.compatible) {
+        ui.success("Compatibility check passed! The SDK is fully compatible with the deployed contract.");
+      } else {
+        ui.error("Compatibility check failed!");
+        result.issues.forEach((issue) => {
+          ui.error(` - ${issue}`);
+        });
+        throw new Error("Compatibility check failed.");
+      }
     });
 
   program

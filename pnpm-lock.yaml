@@ -56,6 +56,9 @@ importers:
 
   cli:
     dependencies:
+      '@invoice-liquidity/sdk':
+        specifier: workspace:*
+        version: link:../sdk
       '@stellar/stellar-sdk':
         specifier: ^15.0.1
         version: 15.1.0
