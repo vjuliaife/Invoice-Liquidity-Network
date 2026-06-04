@@ -5,10 +5,10 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](./LICENSE)
 [![Status](https://img.shields.io/badge/status-status.iln.finance-brightgreen)](https://status.iln.finance)
 
-**Turn unpaid invoices into instant liquidity on-chain, on Stellar.**
+**Turn unpaid invoices into instant liquidity on-chain, on Stellar.***********
 
 
-i just need to create a draft pr
+i just need to create a draft meaninful pr
 
 # Invoice Liquidity Network (ILN)
 
@@ -209,7 +209,7 @@ npm run test:e2e              # Run E2E integration tests
 
 We welcome contributions of all kinds — smart contract improvements, documentation, frontend, tests, and research.
 
-See [CONTRIBUTING.md](./CONTRIBUTING.md) for the full process.
+Start here: [CONTRIBUTING.md](./CONTRIBUTING.md) for the project-level contribution model, repo decision tree, and Drips Wave guide.
 
 ---
 
@@ -228,3 +228,14 @@ Built on [Stellar](https://stellar.org) and [Soroban](https://soroban.stellar.or
 ## Security
 
 Please refer to our [Security Policy](./SECURITY.md) for information on supported versions and how to report vulnerabilities privately.
+
+## Documentation Site
+
+The ILN documentation is built with [Nextra](https://nextra.site) and deployed to [docs.iln.finance](https://docs.iln.finance).
+
+### Local Development
+
+```bash
+cd packages/docs
+npm install
+npm run dev
