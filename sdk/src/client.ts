@@ -9,6 +9,7 @@ import {
   nativeToScVal,
   xdr,
 } from "@stellar/stellar-sdk";
+import { createLogger } from "./logger";
 
 import type { Invoice, InvoiceState } from "@iln/shared";
 
@@ -214,7 +215,13 @@ export class ILNSdk {
     const invoiceId = this.extractBigIntResult(simulation, "submit_invoice");
     const preparedTransaction = await this.prepareTransaction(transaction);
 
-    await this.signAndSend(preparedTransaction, params.freelancer);
+    if (this.logger.enabled) {
+      this.logger("submitInvoice prepared transaction", {
+        xdr: this.toHex(preparedTransaction.toXDR()),
+      });
+    }
+
+    await this.signAndSend(preparedTransaction, params.freelancer, "submitInvoice");
     return invoiceId;
   }
 
@@ -230,8 +237,20 @@ export class ILNSdk {
       nativeToScVal(params.invoiceId, { type: "u64" }),
     ]);
 
+    if (this.logger.enabled) {
+      this.logger("fundInvoice called", { params });
+      this.logger("fundInvoice transaction", { xdr: this.toHex(transaction.toXDR()) });
+    }
+
     const preparedTransaction = await this.prepareTransaction(transaction);
-    await this.signAndSend(preparedTransaction, params.funder);
+
+    if (this.logger.enabled) {
+      this.logger("fundInvoice prepared transaction", {
+        xdr: this.toHex(preparedTransaction.toXDR()),
+      });
+    }
+
+    await this.signAndSend(preparedTransaction, params.funder, "fundInvoice");
   }
 
   async markPaid(params: MarkPaidParams): Promise<void> {
@@ -239,9 +258,21 @@ export class ILNSdk {
     const transaction = await this.buildWriteTransaction(payer, "mark_paid", [
       nativeToScVal(params.invoiceId, { type: "u64" }),
     ]);
+
+    if (this.logger.enabled) {
+      this.logger("markPaid called", { params });
+      this.logger("markPaid transaction", { xdr: this.toHex(transaction.toXDR()) });
+    }
+
     const preparedTransaction = await this.prepareTransaction(transaction);
 
-    await this.signAndSend(preparedTransaction, payer);
+    if (this.logger.enabled) {
+      this.logger("markPaid prepared transaction", {
+        xdr: this.toHex(preparedTransaction.toXDR()),
+      });
+    }
+
+    await this.signAndSend(preparedTransaction, payer, "markPaid");
   }
 
   async claimDefault(params: ClaimDefaultParams): Promise<void> {
@@ -255,9 +286,21 @@ export class ILNSdk {
       this.toAddress(params.funder),
       nativeToScVal(params.invoiceId, { type: "u64" }),
     ]);
+
+    if (this.logger.enabled) {
+      this.logger("claimDefault called", { params });
+      this.logger("claimDefault transaction", { xdr: this.toHex(transaction.toXDR()) });
+    }
+
     const preparedTransaction = await this.prepareTransaction(transaction);
 
-    await this.signAndSend(preparedTransaction, params.funder);
+    if (this.logger.enabled) {
+      this.logger("claimDefault prepared transaction", {
+        xdr: this.toHex(preparedTransaction.toXDR()),
+      });
+    }
+
+    await this.signAndSend(preparedTransaction, params.funder, "claimDefault");
   }
 
   async getInvoice(invoiceId: bigint): Promise<Invoice> {
@@ -265,6 +308,10 @@ export class ILNSdk {
       nativeToScVal(invoiceId, { type: "u64" }),
     ]);
     const simulation = await this.simulateReadTransaction("get_invoice", transaction);
+
+    if (this.logger.enabled) {
+      this.logger("getInvoice simulation result", this.summarizeSimulation(simulation));
+    }
 
     return this.extractInvoiceResult(simulation);
   }
@@ -402,6 +449,7 @@ export class ILNSdk {
   private async signAndSend(
     preparedTransaction: PreparedTransactionLike,
     sourceAddress: string,
+    methodName?: string,
   ): Promise<void> {
     const signer = this.signer;
     if (!signer) {
@@ -426,6 +474,14 @@ export class ILNSdk {
       status?: string;
     };
 
+    if (this.logger.enabled) {
+      this.logger(`${methodName ?? "signAndSend"} transaction response`, {
+        hash: response.hash,
+        status: response.status,
+        response,
+      });
+    }
+
     if (!response.hash || !response.status) {
       throw new Error("RPC server returned an invalid sendTransaction response.");
     }
@@ -447,11 +503,52 @@ export class ILNSdk {
       status?: string;
     };
 
+    if (this.logger.enabled) {
+      this.logger(`${methodName ?? "signAndSend"} final status`, finalStatus);
+    }
+
     if (finalStatus.status !== rpc.Api.GetTransactionStatus.SUCCESS) {
       throw new Error(
         `Transaction did not succeed. Final status: ${String(finalStatus.status)}.`,
       );
     }
+  }
+
+  private summarizeSimulation(simulation: unknown): Record<string, unknown> {
+    if (!simulation || typeof simulation !== "object") {
+      return { simulation };
+    }
+
+    const data = simulation as Record<string, unknown>;
+    const result = data.result as Record<string, unknown> | undefined;
+
+    return {
+      error: data.error,
+      status: data.status,
+      fee: result?.fee,
+      resources: result?.resources,
+      retval: result?.retval,
+      result,
+    };
+  }
+
+  private toHex(xdrData: string): string {
+    if (typeof Buffer !== "undefined") {
+      return Buffer.from(xdrData, "base64").toString("hex");
+    }
+
+    if (typeof atob !== "undefined") {
+      const binary = atob(xdrData);
+      let hex = "";
+
+      for (let i = 0; i < binary.length; i += 1) {
+        hex += binary.charCodeAt(i).toString(16).padStart(2, "0");
+      }
+
+      return hex;
+    }
+
+    return xdrData;
   }
 
   private extractBigIntResult(simulation: unknown, method: string): bigint {
