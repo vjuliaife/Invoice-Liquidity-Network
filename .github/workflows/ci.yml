@@ -21,8 +21,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-        with:
-          submodules: recursive
+
+      - name: Initialize submodules
+        run: git submodule update --init --recursive
 
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
@@ -63,8 +64,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-        with:
-          submodules: recursive
+
+      - name: Initialize submodules
+        run: git submodule update --init --recursive
 
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
@@ -105,8 +107,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-        with:
-          submodules: recursive
+
+      - name: Initialize submodules
+        run: git submodule update --init --recursive
 
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
@@ -236,7 +239,7 @@ jobs:
 
       - uses: pnpm/action-setup@v4
         with:
-          version: 9
+          version: "9.0.0"
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -268,8 +271,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-        with:
-          submodules: recursive
+
+      - name: Initialize submodules
+        run: git submodule update --init --recursive
 
       - name: Setup pnpm with store cache
         uses: ./.github/actions/setup-pnpm
@@ -298,7 +302,7 @@ jobs:
         run: stellar network use testnet
 
       - name: Build contract (skip if submodule empty)
-        working-directory: ./ILN-Smart-Contract
+        working-directory: ./backend
         run: |
           if [ -f "Cargo.toml" ]; then
             stellar contract build

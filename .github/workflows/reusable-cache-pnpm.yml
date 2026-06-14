@@ -14,7 +14,7 @@ on:
         description: pnpm version for pnpm/action-setup
         required: false
         type: string
-        default: "9"
+        default: "9.0.0"
       lockfile-path:
         description: Path to pnpm-lock.yaml (relative to repository root)
         required: false
