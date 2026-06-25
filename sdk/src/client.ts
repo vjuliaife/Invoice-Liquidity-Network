@@ -14,6 +14,10 @@ import { createLogger } from "./logger";
 import type { Invoice, InvoiceState } from "@iln/shared";
 
 import type {
+  BatchFundParams,
+  BatchPayParams,
+  BatchResult,
+  BatchSubmitParams,
   ClaimDefaultParams,
   FundInvoiceParams,
   ILNSdkConfig,
@@ -169,6 +173,178 @@ export class ILNSdk {
     this.validateBatchSimulation(simulation);
 
     return transaction;
+  }
+
+  async batchSubmitInvoices(params: BatchSubmitParams): Promise<BatchResult> {
+    const signerAddress = await this.requireSignerAddress();
+    const results: BatchResult["results"] = [];
+    let totalFee = BigInt(0);
+
+    const operations: TransactionOperation[] = [];
+    for (let i = 0; i < params.invoices.length; i++) {
+      const invoice = params.invoices[i];
+      if (signerAddress !== invoice.freelancer) {
+        results.push({
+          index: i,
+          success: false,
+          error: "submitInvoice must be signed by the freelancer address.",
+        });
+        continue;
+      }
+
+      operations.push(this.buildSubmitInvoiceOperation(invoice));
+      results.push({ index: i, success: true });
+    }
+
+    if (operations.length === 0) {
+      return { success: false, results, totalFee: BigInt(0) };
+    }
+
+    try {
+      const transaction = await this.batch(operations);
+      const simulation = await this.wrapRpcCall(
+        this.server.simulateTransaction(transaction),
+        "simulateTransaction"
+      );
+
+      const simResult = simulation as { minResourceFee?: number };
+      totalFee = BigInt(simResult?.minResourceFee ?? BASE_FEE);
+
+      const preparedTransaction = await this.prepareTransaction(transaction);
+      await this.signAndSend(preparedTransaction, signerAddress, "batchSubmitInvoices");
+
+      return { success: true, results, totalFee };
+    } catch (error: any) {
+      return {
+        success: false,
+        results: results.map((r) => ({
+          ...r,
+          success: false,
+          error: r.error ?? error.message,
+        })),
+        totalFee,
+      };
+    }
+  }
+
+  async batchFundInvoices(params: BatchFundParams): Promise<BatchResult> {
+    const signerAddress = await this.requireSignerAddress();
+    const results: BatchResult["results"] = [];
+    let totalFee = BigInt(0);
+
+    if (signerAddress !== params.funder) {
+      return {
+        success: false,
+        results: params.invoiceIds.map((_, i) => ({
+          index: i,
+          success: false,
+          error: "batchFundInvoices must be signed by the funder address.",
+        })),
+        totalFee: BigInt(0),
+      };
+    }
+
+    const operations: TransactionOperation[] = params.invoiceIds.map((invoiceId, i) => {
+      results.push({ index: i, success: true, invoiceId });
+      return this.buildFundInvoiceOperation({ funder: params.funder, invoiceId });
+    });
+
+    try {
+      const transaction = await this.batch(operations);
+      const simulation = await this.wrapRpcCall(
+        this.server.simulateTransaction(transaction),
+        "simulateTransaction"
+      );
+
+      const simResult = simulation as { minResourceFee?: number };
+      totalFee = BigInt(simResult?.minResourceFee ?? BASE_FEE);
+
+      const preparedTransaction = await this.prepareTransaction(transaction);
+      await this.signAndSend(preparedTransaction, params.funder, "batchFundInvoices");
+
+      return { success: true, results, totalFee };
+    } catch (error: any) {
+      return {
+        success: false,
+        results: results.map((r) => ({
+          ...r,
+          success: false,
+          error: error.message,
+        })),
+        totalFee,
+      };
+    }
+  }
+
+  async batchMarkPaid(params: BatchPayParams): Promise<BatchResult> {
+    const signerAddress = await this.requireSignerAddress();
+    const results: BatchResult["results"] = [];
+    let totalFee = BigInt(0);
+
+    const operations: TransactionOperation[] = params.invoiceIds.map((invoiceId, i) => {
+      results.push({ index: i, success: true, invoiceId });
+      return this.buildMarkPaidOperation(signerAddress, { invoiceId });
+    });
+
+    try {
+      const transaction = await this.batch(operations);
+      const simulation = await this.wrapRpcCall(
+        this.server.simulateTransaction(transaction),
+        "simulateTransaction"
+      );
+
+      const simResult = simulation as { minResourceFee?: number };
+      totalFee = BigInt(simResult?.minResourceFee ?? BASE_FEE);
+
+      const preparedTransaction = await this.prepareTransaction(transaction);
+      await this.signAndSend(preparedTransaction, signerAddress, "batchMarkPaid");
+
+      return { success: true, results, totalFee };
+    } catch (error: any) {
+      return {
+        success: false,
+        results: results.map((r) => ({
+          ...r,
+          success: false,
+          error: error.message,
+        })),
+        totalFee,
+      };
+    }
+  }
+
+  async estimateBatchFee(operations: TransactionOperation[]): Promise<bigint> {
+    if (operations.length === 0) {
+      return BigInt(0);
+    }
+
+    const sourceAddress = await this.resolveBatchSourceAddress(operations);
+    const sourceAccount = (await this.wrapRpcCall(
+      this.server.getAccount(sourceAddress),
+      "getAccount"
+    )) as Account;
+
+    const transactionBuilder = new TransactionBuilder(sourceAccount, {
+      fee: BASE_FEE,
+      networkPassphrase: this.networkPassphrase,
+    });
+
+    for (const operation of operations) {
+      transactionBuilder.addOperation(operation);
+    }
+
+    const transaction = transactionBuilder.setTimeout(30).build();
+    const simulation = await this.wrapRpcCall(
+      this.server.simulateTransaction(transaction),
+      "simulateTransaction"
+    );
+
+    const simResult = simulation as { minResourceFee?: number; error?: unknown };
+    if (simResult.error) {
+      throw new Error(`Fee estimation failed: ${String(simResult.error)}`);
+    }
+
+    return BigInt(simResult?.minResourceFee ?? BASE_FEE);
   }
 
   private buildInvokeContractFunctionOperation(

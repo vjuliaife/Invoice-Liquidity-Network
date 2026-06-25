@@ -8,7 +8,7 @@ export type NotificationTrigger =
   | "invoice_due_soon"
   | "invoice_overdue";
 
-export type SubscriptionChannel = "email" | "webhook" | "sms";
+export type SubscriptionChannel = "email" | "webhook" | "sms" | "websocket";
 
 export interface Invoice {
   id: number;
@@ -41,4 +41,25 @@ export interface NotificationPayload {
   message: string;
   actor: "freelancer" | "lp" | "payer";
   eventType?: ILNEventType;
+}
+
+export interface WebSocketClient {
+  id: string;
+  address: string;
+  socket: WebSocket;
+  subscribedAddresses: Set<string>;
+  lastHeartbeat: number;
+  isAlive: boolean;
+}
+
+export interface WebSocketMessage {
+  type: "subscribe" | "unsubscribe" | "event" | "heartbeat" | "error";
+  payload?: unknown;
+  address?: string;
+  timestamp?: number;
+}
+
+export interface WebSocketSubscription {
+  address: string;
+  triggers?: NotificationTrigger[];
 }
