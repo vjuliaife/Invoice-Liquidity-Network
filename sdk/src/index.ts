@@ -14,3 +14,4 @@ export * from "./federation";
 export * from "./governance";
 export * from "./errors";
 export type { GovernanceProposal, ProposalStatus } from "./types";
+export * from "./offline";
