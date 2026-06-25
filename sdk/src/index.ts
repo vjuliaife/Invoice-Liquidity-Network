@@ -16,6 +16,8 @@ export * from "./errors";
 export type { GovernanceProposal, ProposalStatus } from "./types";
 export * from "./offline";
 export * from "./event-emitter";
+export * from "./recovery";
+export * from "./plugins";
 export { InvoiceDashboard } from "./InvoiceDashboard";
 export type {
   InvoiceDashboardProps,
