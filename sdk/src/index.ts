@@ -8,8 +8,24 @@ export { ContractError } from "./generated/types";
 export * from "./notifications";
 export * from "./analytics";
 export * from "./analytics-computations";
+export type { UsageEvent } from "./usage-analytics";
 export * from "./compatibility";
 export * from "./federation";
 export * from "./governance";
 export * from "./errors";
 export type { GovernanceProposal, ProposalStatus } from "./types";
+export * from "./offline";
+export * from "./event-emitter";
+export * from "./recovery";
+export * from "./plugins";
+export { InvoiceDashboard } from "./InvoiceDashboard";
+export type {
+  InvoiceDashboardProps,
+  LiveInvoiceEvent,
+  InvoiceEventType,
+  DashboardMetrics,
+  MetricKey,
+  DashboardTheme,
+} from "./InvoiceDashboard";
+export * from "./cache";
+export * from "./validators";

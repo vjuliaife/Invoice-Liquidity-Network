@@ -15,10 +15,17 @@ import {
   formatHistoryJson,
   formatHistoryTable,
   formatInvoiceDetails,
+  formatInvoiceDetailsJson,
   formatInvoiceList,
+  formatInvoiceListJson,
   formatProtocolConfig,
+  helpExample,
+  helpSection,
 } from "./format";
+import { generateManPage } from "./man";
 import { registerInspectCommand } from "./inspect";
+import { registerCompletionCommand } from "./completion";
+import { registerEnvCommands } from "./env";
 import { createKeypairFileSigner } from "./signer";
 import { TestnetAccountSeeder } from "./dev-seed";
 import type { Ui } from "./format";
@@ -56,16 +63,67 @@ export async function runCli(
     ((devUi: Ui) => new LocalDevEnvironment({ ui: devUi }));
 
   const program = new Command();
+
+  program.configureOutput({
+    writeOut: (str) => stdout.write(str),
+    writeErr: (str) => stderr.write(str),
+  });
+
+  program.configureHelp({
+    formatHelp: (cmd, helper) => {
+      const pc = require("picocolors");
+      const term = (str: string) => pc.bold(pc.cyan(str));
+      const sections: string[] = [];
+
+      const usage = helper.commandUsage(cmd);
+      if (usage) sections.push(`${pc.bold("Usage:")} ${usage}`);
+
+      const description = helper.commandDescription(cmd);
+      if (description) sections.push(`\n${description}`);
+
+      const args = helper.visibleArguments(cmd);
+      if (args.length) {
+        sections.push(`\n${pc.bold("Arguments:")}`);
+        args.forEach((a) =>
+          sections.push(`  ${term(helper.argumentTerm(a).padEnd(helper.padWidth(cmd, helper)))}  ${helper.argumentDescription(a)}`),
+        );
+      }
+
+      const opts = helper.visibleOptions(cmd);
+      if (opts.length) {
+        sections.push(`\n${pc.bold("Options:")}`);
+        opts.forEach((o) =>
+          sections.push(`  ${term(helper.optionTerm(o).padEnd(helper.padWidth(cmd, helper)))}  ${helper.optionDescription(o)}`),
+        );
+      }
+
+      const cmds = helper.visibleCommands(cmd);
+      if (cmds.length) {
+        sections.push(`\n${pc.bold("Commands:")}`);
+        cmds.forEach((c) =>
+          sections.push(`  ${term(helper.subcommandTerm(c).padEnd(helper.padWidth(cmd, helper)))}  ${helper.subcommandDescription(c)}`),
+        );
+      }
+
+      return sections.join("\n") + "\n";
+    },
+  });
+
   program
     .name("iln")
     .description("Invoice Liquidity Network CLI")
     .exitOverride()
     .showHelpAfterError()
-    .option("--json", "reserved for future machine-readable output")
+    .option("--json", "output machine-readable JSON (applies to: status, list)")
+    .option("--quiet", "suppress informational messages; show only command output")
     .hook("preAction", (_thisCommand, actionCommand) => {
+      registerCompletionCommand(program);
+      registerEnvCommands(program);
+
       const isConfiglessXdrCommand =
         actionCommand.name() === "decode" && actionCommand.parent?.name() === "xdr";
       if (
+        actionCommand.name() === "man" ||
         isConfiglessXdrCommand ||
         (actionCommand.parent?.name() === "dev" &&
           ["reset", "start", "status", "stop"].includes(actionCommand.name()))
@@ -75,7 +133,10 @@ export async function runCli(
 
       try {
         const config = load();
-        ui.info(`Using ${describeConfig(config)}`);
+        const opts = program.opts() as { quiet?: boolean };
+        if (!opts.quiet) {
+          ui.info(`Using ${describeConfig(config)}`);
+        }
       } catch (error) {
         throw error;
       }
@@ -89,6 +150,19 @@ export async function runCli(
     .requiredOption("--due <date>", "due date as YYYY-MM-DD or Unix timestamp")
     .requiredOption("--rate <bps>", "discount rate in basis points")
     .option("--token <contractId>", "override token contract ID from config")
+    .addHelpText(
+      "after",
+      [
+        "",
+        helpSection("Examples:"),
+        helpExample("iln submit --payer GABC... --amount 100 --due 2026-03-31 --rate 300"),
+        helpExample("iln submit --payer GABC... --amount 12.5 --due 2026-06-15 --rate 150 --token CDEF..."),
+        "",
+        helpSection("See also:"),
+        helpExample("iln status --id <id>    Check the state of a submitted invoice"),
+        helpExample("iln list --address <G>  List all invoices for your address"),
+      ].join("\n"),
+    )
     .action(async (options: { amount: string; due: string; payer: string; rate: string; token?: string }) => {
       const config = load();
       const client = createClient(config);
@@ -118,6 +192,19 @@ export async function runCli(
     .description("Fund an invoice using the configured signer account.")
     .requiredOption("--id <invoiceId>", "invoice ID")
     .option("--amount <amount>", "amount to fund in display units; defaults to the remaining balance")
+    .addHelpText(
+      "after",
+      [
+        "",
+        helpSection("Examples:"),
+        helpExample("iln fund --id 42"),
+        helpExample("iln fund --id 42 --amount 50   (partial funding)"),
+        "",
+        helpSection("See also:"),
+        helpExample("iln status --id <id>    Confirm the invoice is now Funded"),
+        helpExample("iln history --address <G>  View your funding history"),
+      ].join("\n"),
+    )
     .action(async (options: { amount?: string; id: string }) => {
       const client = createClient(load());
       const result = await client.fundInvoice(
@@ -131,6 +218,22 @@ export async function runCli(
     .command("pay")
     .description("Mark an invoice as paid using the configured signer account.")
     .requiredOption("--id <invoiceId>", "invoice ID")
+    .addHelpText(
+      "after",
+      [
+        "",
+        helpSection("Examples:"),
+        helpExample("iln pay --id 42"),
+        "",
+        helpSection("Tips:"),
+        helpExample("Only the payer address on the invoice can mark it paid."),
+        helpExample("Run `iln status --id <id>` first to confirm the invoice is Funded."),
+        "",
+        helpSection("See also:"),
+        helpExample("iln status --id <id>    Verify the invoice is now Paid"),
+        helpExample("iln history --address <G>  View your payment history"),
+      ].join("\n"),
+    )
     .action(async (options: { id: string }) => {
       const client = createClient(load());
       const result = await client.markPaid(parseInvoiceId(options.id));
@@ -141,21 +244,49 @@ export async function runCli(
     .command("status")
     .description("Show the current state of an invoice.")
     .requiredOption("--id <invoiceId>", "invoice ID")
+    .addHelpText(
+      "after",
+      [
+        "",
+        helpSection("Examples:"),
+        helpExample("iln status --id 42"),
+        helpExample("iln status --id 1    (invoice IDs start at 1)"),
+        "",
+        helpSection("See also:"),
+        helpExample("iln list --address <G>  List all invoices for an address"),
+        helpExample("iln history --address <G>  View full action history"),
+      ].join("\n"),
+    )
     .action(async (options: { id: string }) => {
       const client = createClient(load());
       const invoice = await client.getInvoice(parseInvoiceId(options.id));
-      ui.info(formatInvoiceDetails(invoice));
+      const opts = program.opts() as { json?: boolean };
+      ui.info(opts.json ? formatInvoiceDetailsJson(invoice) : formatInvoiceDetails(invoice));
     });
 
   program
     .command("list")
     .description("List all invoices associated with a Stellar address.")
     .requiredOption("--address <address>", "freelancer, payer, or funder Stellar address")
+    .addHelpText(
+      "after",
+      [
+        "",
+        helpSection("Examples:"),
+        helpExample("iln list --address GABC..."),
+        helpExample("iln list --address GABC...   (returns invoices where address is freelancer, payer, or funder)"),
+        "",
+        helpSection("See also:"),
+        helpExample("iln history --address <G>  Filter by action type or invoice ID"),
+        helpExample("iln status --id <id>       Inspect a specific invoice"),
+      ].join("\n"),
+    )
     .action(async (options: { address: string }) => {
       assertStellarAddress(options.address, "address");
       const client = createClient(load());
       const invoices = await client.listInvoicesByAddress(options.address);
-      ui.info(formatInvoiceList(invoices));
+      const opts = program.opts() as { json?: boolean };
+      ui.info(opts.json ? formatInvoiceListJson(invoices) : formatInvoiceList(invoices));
     });
 
   program
@@ -169,6 +300,19 @@ export async function runCli(
     )
     .option("--limit <n>", "maximum number of results to return")
     .option("--format <fmt>", "output format: table (default) or json", "table")
+    .addHelpText(
+      "after",
+      [
+        "",
+        helpSection("Examples:"),
+        helpExample("iln history --address GABC..."),
+        helpExample("iln history --address GABC... --action fund --limit 10 --format json"),
+        "",
+        helpSection("See also:"),
+        helpExample("iln list --address <G>    Quick overview of all invoices"),
+        helpExample("iln status --id <id>      Full details on a single invoice"),
+      ].join("\n"),
+    )
     .action(
       async (options: {
         address: string;
@@ -216,8 +360,9 @@ export async function runCli(
           invoices = invoices.slice(0, limit);
         }
 
+        const globalOpts = program.opts() as { json?: boolean };
         const output =
-          options.format === "json"
+          options.format === "json" || globalOpts.json
             ? formatHistoryJson(invoices)
             : formatHistoryTable(invoices);
 
@@ -231,10 +376,25 @@ export async function runCli(
   compatCommand
     .command("check")
     .description("Check SDK compatibility with the deployed contract version.")
+    .addHelpText(
+      "after",
+      [
+        "",
+        helpSection("Examples:"),
+        helpExample("iln compat check"),
+        "",
+        helpSection("Tips:"),
+        helpExample("Run this after updating the SDK or redeploying the contract."),
+        helpExample("A failed check means the SDK version does not match the on-chain contract."),
+        "",
+        helpSection("See also:"),
+        helpExample("iln config   Show live protocol parameters from the contract"),
+      ].join("\n"),
+    )
     .action(async () => {
       const config = load();
       const client = createClient(config);
-      
+
       ui.info("Checking contract compatibility...");
       const result = await checkCompatibility(async (method: string) => {
         if (method === "get_version") {
@@ -245,7 +405,7 @@ export async function runCli(
 
       ui.info(`SDK Version:      ${result.sdkVersion}`);
       ui.info(`Contract Version: ${result.contractVersion}`);
-      
+
       if (result.compatible) {
         ui.success("Compatibility check passed! The SDK is fully compatible with the deployed contract.");
       } else {
@@ -260,6 +420,18 @@ export async function runCli(
   program
     .command("protocol-config")
     .description("Show live protocol configuration from the ILN contract.")
+    .addHelpText(
+      "after",
+      [
+        "",
+        helpSection("Examples:"),
+        helpExample("iln config"),
+        helpExample("iln config   (shows min amount, max rate, fee, reputation thresholds)"),
+        "",
+        helpSection("See also:"),
+        helpExample("iln compat check   Verify SDK and contract versions are compatible"),
+      ].join("\n"),
+    )
     .action(async () => {
       const client = createClient(load());
       const config = await client.getProtocolConfig();
@@ -300,6 +472,19 @@ export async function runCli(
     .command("decode")
     .description("Decode a base64 Soroban ScVal XDR value.")
     .argument("[base64]", "base64-encoded ScVal XDR")
+    .addHelpText(
+      "after",
+      [
+        "",
+        helpSection("Examples:"),
+        helpExample("iln xdr decode AAAAAQAAAAA="),
+        helpExample('iln xdr decode "$(stellar contract invoke ... 2>&1 | grep XDR)"'),
+        "",
+        helpSection("Tips:"),
+        helpExample("Does not require a configured keypair or network connection."),
+        helpExample("Useful for inspecting raw contract return values from Horizon or RPC responses."),
+      ].join("\n"),
+    )
     .action((base64?: string) => {
       if (!base64) {
         throw new Error("Missing base64 ScVal XDR. Usage: iln xdr decode <base64>");
@@ -308,12 +493,123 @@ export async function runCli(
       stdout.write(formatDecodedScVal(decodeScValXdr(base64)));
     });
 
+  // Dashboard command
+  program
+    .command("dashboard")
+    .description("Launch the real-time dashboard for monitoring invoice activity.")
+    .option("--refresh <ms>", "Refresh interval in milliseconds", "5000")
+    .option("--export <file>", "Export dashboard data to JSON file")
+    .addHelpText(
+      "after",
+      [
+        "",
+        helpSection("Examples:"),
+        helpExample("iln dashboard"),
+        helpExample("iln dashboard --refresh 10000   (refresh every 10 seconds)"),
+        helpExample("iln dashboard --export snapshot.json   (export data and exit)"),
+        "",
+        helpSection("Tips:"),
+        helpExample("Press q or Ctrl-C to exit the dashboard."),
+        helpExample("Use --export to capture a point-in-time snapshot for reporting."),
+      ].join("\n"),
+    )
+    .action(async (options: { refresh: string; export?: string }) => {
+      const config = load();
+      const client = createClient(config);
+      const { runDashboard } = await import("./dashboard");
+
+      if (options.export) {
+        const { Dashboard } = await import("./dashboard");
+        const dashboard = new Dashboard(client, config, {
+          refreshIntervalMs: parseInt(options.refresh, 10),
+        });
+        // Quick refresh and export
+        await dashboard["refresh"]();
+        const data = dashboard.exportData();
+        const fs = await import("fs");
+        fs.writeFileSync(options.export, JSON.stringify(data, null, 2));
+        ui.success(`Dashboard data exported to ${options.export}`);
+      } else {
+        await runDashboard(client, config, {
+          refreshIntervalMs: parseInt(options.refresh, 10),
+        });
+      }
+    });
+
+  // Generate command — template system for boilerplate code
+  const collectVars = (val: string, prev: string[]): string[] => [...prev, val];
+
+  program
+    .command("generate")
+    .description("Generate boilerplate code from a built-in or custom template.")
+    .argument("[template]", "template name (omit or use --list to see available templates)")
+    .option("--list", "list available templates and exit")
+    .option("--preview", "print generated output without writing to disk")
+    .option("--out <dir>", "output directory (default: current directory)", ".")
+    .option("--var <key=value>", "set a template variable, repeatable (e.g. --var contractId=C…)", collectVars, [] as string[])
+    .action(
+      async (
+        template: string | undefined,
+        options: { list?: boolean; preview?: boolean; out: string; var: string[] },
+      ) => {
+        const { generate, listTemplates } = await import("./generate");
+
+        if (options.list || !template) {
+          const templates = listTemplates();
+          ui.info("Available templates:\n");
+          for (const t of templates) {
+            ui.info(`  ${t.name.padEnd(24)} ${t.description}`);
+          }
+          if (!template && !options.list) {
+            ui.info('\nUsage: iln generate <template> [--var key=value] [--preview] [--out <dir>]');
+          }
+          return;
+        }
+
+        const vars: Record<string, string> = {};
+        for (const assignment of options.var) {
+          const eq = assignment.indexOf("=");
+          if (eq !== -1) vars[assignment.slice(0, eq)] = assignment.slice(eq + 1);
+        }
+
+        const result = generate({
+          template,
+          vars,
+          outDir: options.out,
+          preview: options.preview,
+        });
+
+        if (options.preview) {
+          ui.info(`--- Preview: ${result.outputFile} ---\n`);
+          stdout.write(result.content);
+        } else {
+          ui.success(`Generated ${result.outputFile}`);
+        }
+      },
+    );
+
   // Development commands
   const devCommand = program.command("dev").description("Development utilities");
 
   devCommand
     .command("start")
     .description("Start a local Stellar node, deploy contracts, fund accounts, and write .env.local.")
+    .addHelpText(
+      "after",
+      [
+        "",
+        helpSection("Examples:"),
+        helpExample("iln dev start"),
+        "",
+        helpSection("Tips:"),
+        helpExample("Requires Docker. Pulls stellar/quickstart:testing on first run."),
+        helpExample("Writes .env.local with contract IDs and funded keypairs."),
+        "",
+        helpSection("See also:"),
+        helpExample("iln dev seed   Create testnet accounts after starting the environment"),
+        helpExample("iln dev stop   Stop the local node when you are done"),
+      ].join("\n"),
+    )
     .action(async () => {
       await createDevEnvironment(ui).start();
     });
@@ -345,6 +641,23 @@ export async function runCli(
     .option("--scenario <type>", "seeding scenario: new-user, active-lp, disputed")
     .option("--count <n>", "number of records to seed per scenario", "1")
     .option("--token <symbol>", "specific token to use: USDC or EURC")
+    .addHelpText(
+      "after",
+      [
+        "",
+        helpSection("Examples:"),
+        helpExample("iln dev seed"),
+        helpExample("iln dev seed --scenario active-lp --count 3 --token USDC"),
+        "",
+        helpSection("Tips:"),
+        helpExample("Saves keypairs to .env.testnet.accounts for use in other commands."),
+        helpExample("Use --scenario new-user to get a blank freelancer + payer pair."),
+        helpExample("Use --scenario active-lp to pre-fund invoices for LP testing."),
+        "",
+        helpSection("See also:"),
+        helpExample("iln dev start   Start the local environment before seeding"),
+      ].join("\n"),
+    )
     .action(async (options: { scenario?: string; count?: string; token?: string }) => {
       const config = load();
       const seeder = new TestnetAccountSeeder({ config, ui });
@@ -363,6 +676,23 @@ export async function runCli(
       const config = load();
       const client = createClient(config);
       await runInteractive({ client, config, ui });
+  program
+    .command("man")
+    .description("Print a roff man page for iln or a subcommand.")
+    .argument("[command]", "subcommand to document, e.g. submit, fund, pay")
+    .addHelpText(
+      "after",
+      [
+        "",
+        helpSection("Examples:"),
+        helpExample("iln man                  (top-level man page)"),
+        helpExample("iln man submit           (man page for the submit command)"),
+        helpExample("iln man | man -l -       (view in terminal man pager)"),
+        helpExample("iln man submit > iln-submit.1  (save to file)"),
+      ].join("\n"),
+    )
+    .action((commandName?: string) => {
+      stdout.write(generateManPage(program, commandName));
     });
 
   try {

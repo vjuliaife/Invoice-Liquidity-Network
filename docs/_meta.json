@@ -1,6 +1,7 @@
 {
   "index": "Home",
   "glossary": "Glossary",
+  "troubleshooting": "Troubleshooting",
   "analytics": "Analytics",
   "local-development": "Local Development",
   "notifications": "Notifications",
@@ -10,5 +11,6 @@
   "mutation-testing": "Mutation Testing",
   "cross-repo-sync": "Cross-Repo Sync",
   "branch-protection": "Branch Protection",
-  "project-board": "Project Board"
+  "project-board": "Project Board",
+  "security-guide": "Security Guide"
 }
